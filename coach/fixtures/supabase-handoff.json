@@ -1,0 +1,13 @@
+{
+  "origins": ["https://supabase.com"],
+  "steps": [
+    {
+      "number": 1,
+      "completion": {
+        "kind": "url_contains",
+        "value": "/dashboard/project/jpyjehpeqptponceofzt"
+      },
+      "sensitivity": "normal"
+    }
+  ]
+}

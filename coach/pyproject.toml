@@ -1,0 +1,39 @@
+[project]
+name = "onboard-coach"
+version = "0.1.0"
+description = "Local voice coach for visually impaired workplace onboarding"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "edge-tts>=7",
+    "fpdf2>=2.8",
+    "playwright>=1.40",
+    "pypdf>=5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+voice = [
+    "faster-whisper>=1.1",
+    "mlx-whisper>=0.4",
+    "numpy>=2.0,<2.3",
+    "onnxruntime>=1.22",
+    "pipecat-ai==1.8.1",
+    "sounddevice>=0.5",
+    "zerotts==0.1.5",
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: exercises browser/CDP adapters together",
+    "system: local end-to-end smoke without production services",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

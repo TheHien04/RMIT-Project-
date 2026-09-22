@@ -1,0 +1,11 @@
+{
+  "origins": ["https://example.staging.supabase.co"],
+  "steps": [
+    {
+      "number": 1,
+      "target_label": "Tạo dự án",
+      "completion": {"kind": "url_contains", "value": "page=dashboard"},
+      "sensitivity": "normal"
+    }
+  ]
+}
