@@ -24,6 +24,12 @@ class SuccessCheck:
     kind: str
     columns: tuple[str, ...] = ()
     value: str = ""
+    selector: str = ""
+    path: str = ""
+
+    @property
+    def probe_key(self) -> str:
+        return "\x1f".join((self.kind, self.selector, self.value, self.path))
 
     def met(self, flags: dict) -> bool:
         if self.kind == "panel_open":
@@ -37,10 +43,25 @@ class SuccessCheck:
             return self.value in str(flags.get("url") or "")
         if self.kind == "url_path":
             return urlsplit(str(flags.get("url") or "")).path == self.value
+        if self.kind == "url_path_prefix":
+            return urlsplit(str(flags.get("url") or "")).path.startswith(self.value)
+        if self.kind == "url_path_prefix_and_text":
+            return (
+                urlsplit(str(flags.get("url") or "")).path.startswith(self.path)
+                and self.probe_key in {str(key) for key in flags.get("dom_probes") or []}
+            )
+        if self.kind == "selector_visible":
+            return self.probe_key in {str(key) for key in flags.get("dom_probes") or []}
         if self.kind == "text_visible":
+            if self.selector:
+                return self.probe_key in {str(key) for key in flags.get("dom_probes") or []}
             return self.value.casefold() in {
                 str(text).casefold() for text in flags.get("visible_text") or []
             }
+        if self.kind == "input_value":
+            if self.selector:
+                return self.probe_key in {str(key) for key in flags.get("dom_probes") or []}
+            return self.value in {str(value) for value in flags.get("input_values") or []}
         if self.kind == "focused_label":
             return self.value.casefold() == str(flags.get("focused") or "").casefold()
         return False
@@ -55,18 +76,38 @@ class LessonStep:
     needs_discovery: bool
     success: SuccessCheck
     module_title: str
+    sensitivity: str = "normal"
+    assist_click_allowed: bool = False
 
     def __post_init__(self) -> None:
         if self.target_label and self.target_label not in self.citation.quote:
             raise ValueError("target label must be copied from the cited sentence")
         if self.needs_discovery and self.target_label:
             raise ValueError("a discovery step cannot carry a target label")
+        if self.sensitivity not in {"normal", "destructive"}:
+            raise ValueError("step sensitivity must be normal or destructive")
+
+
+@dataclass(frozen=True)
+class LearningDesign:
+    """Reviewed pedagogy metadata; never grants browser capabilities."""
+
+    objective: str = ""
+    bloom_level: str = ""
+    authentic_scenario: str = ""
+    reflection_prompt: str = ""
+    concept_summary: str = ""
+    transfer_task: str = ""
+    success_evidence: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class LessonPlan:
     title: str
     steps: tuple[LessonStep, ...]
+    functions: tuple[tuple[str, str], ...] = ()
+    control_hints: tuple[tuple[str, str, str], ...] = ()
+    learning: LearningDesign = LearningDesign()
 
 
 def plan_from_pages(pages: list[str]) -> LessonPlan:
@@ -197,6 +238,11 @@ def _parse_success(text: str) -> SuccessCheck:
         value = text[len(text_prefix) :].strip().strip('"“”')
         if value:
             return SuccessCheck(kind="text_visible", value=value)
+    input_prefix = "đã nhập giá trị "
+    if text.startswith(input_prefix):
+        value = text[len(input_prefix) :].strip().strip('"“”')
+        if value:
+            return SuccessCheck(kind="input_value", value=value)
     focus_prefix = "focus ở "
     if text.startswith(focus_prefix):
         value = text[len(focus_prefix) :].strip().strip('"“”')

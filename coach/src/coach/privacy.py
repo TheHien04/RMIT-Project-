@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -25,7 +27,11 @@ class EgressLog:
     events: list[EgressEvent] = field(default_factory=list)
 
     def record(self, kind: str, summary: Mapping[str, Any], *, left_machine: bool) -> EgressEvent:
-        event = EgressEvent(kind=kind, left_machine=left_machine, summary=dict(summary))
+        event = EgressEvent(
+            kind=kind,
+            left_machine=left_machine,
+            summary=_egress_summary(summary),
+        )
         self.events.append(event)
         return event
 
@@ -42,7 +48,7 @@ class EgressLog:
             )
             for event in self.events
         ]
-        path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+        _write_private(path, "\n".join(lines) + ("\n" if lines else ""), append=False)
 
 
 @dataclass
@@ -61,9 +67,43 @@ class BrowserAudit:
 
     def write_jsonl(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            for event in self.events:
-                handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+        text = "".join(json.dumps(event, ensure_ascii=False) + "\n" for event in self.events)
+        if text:
+            _write_private(path, text, append=True)
+
+
+def _egress_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep audit value without persisting speech or prompt content."""
+
+    safe: dict[str, Any] = {}
+    for key, value in summary.items():
+        if key in {"html", "dom", "cookie", "token", "password", "screenshot"}:
+            continue
+        if key in {"user_text", "step_say", "citation_quote"}:
+            text = str(value or "")
+            safe[f"{key}_chars"] = len(text)
+            safe[f"{key}_sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            continue
+        safe[key] = _redact(value)
+    return safe
+
+
+def _write_private(path: Path, text: str, *, append: bool) -> None:
+    """Create privacy logs as owner-only files, including existing paths."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | (os.O_APPEND if append else os.O_TRUNC)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "a" if append else "w", encoding="utf-8") as handle:
+            descriptor = -1
+            handle.write(text)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
 
 
 def _redact(value: Any) -> Any:

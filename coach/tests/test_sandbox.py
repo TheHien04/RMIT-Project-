@@ -29,6 +29,19 @@ def test_button_flow_uses_real_buttons(page, sandbox_url):
     assert create.tag == "button"
 
 
+def test_dom_revision_tracks_visibility_and_accessibility_attribute_changes(page):
+    page.set_content('<div id="target">Create a table</div>')
+    observer = PageObserver(page)
+    observer.install()
+    before = observer.snapshot().revision
+    page.locator("#target").evaluate(
+        "node => { node.className = 'visible'; node.style.display = 'block'; "
+        "node.setAttribute('role', 'button'); node.setAttribute('tabindex', '0'); }"
+    )
+    page.wait_for_timeout(10)
+    assert observer.snapshot().revision > before
+
+
 def test_closed_loop_finishes_the_table_without_sending_data(page, sandbox_url):
     page.goto(sandbox_url + "/?flow=div")
     log = EgressLog()

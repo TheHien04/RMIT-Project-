@@ -18,6 +18,23 @@ Bước 3. Bấm "Lưu bảng".
 """,
 ]
 
+SUPABASE_STAGING_PAGES = [
+    """Supabase staging — thực hành điều hướng bằng bàn phím
+
+Bước 1. Mở "Table Editor".
+[xong: url là /dashboard/project/jpyjehpeqptponceofzt/editor]
+
+Bước 2. Mở "Create a table". Bạn tự nhấn Enter; coach không bấm hộ.
+[xong: thấy chữ "Name"]
+
+Bước 3. Tại ô "Name", nhập coach_demo_tasks rồi nhấn Tab.
+[xong: đã nhập giá trị "coach_demo_tasks"]
+
+Bước 4. Giữ Row Level Security bật và dùng Tab tới "Save". Hai cột mặc định id và created_at được giữ nguyên. Kiểm tra tên bảng rồi tự nhấn Enter để tạo bảng trong Supabase staging.
+[xong: thấy chữ "coach_demo_tasks"]
+"""
+]
+
 MISSING_LABEL_PAGES = [
     """Ghi chú nội bộ
 

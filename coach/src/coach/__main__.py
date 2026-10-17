@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import json
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -11,27 +12,64 @@ from coach.demo_run import run_lesson
 from coach.guide import run_guided
 from coach.lesson import plan_from_pages
 from coach.llm import maybe_llm
-from coach.pdf_text import ONBOARDING_PAGES, load_pages, write_lesson_pdf
+from coach.pdf_text import ONBOARDING_PAGES, SUPABASE_STAGING_PAGES, load_pages, write_lesson_pdf
 from coach.privacy import EgressLog
 from coach.settings import ROOT, load_settings
 from coach.speaker import build_speaker
 
 SANDBOX = ROOT / "sandbox"
-FIXTURE = ROOT / "fixtures" / "onboarding.pdf"
+FIXTURE = ROOT / "fixtures" / "lessons" / "onboarding.pdf"
+SUPABASE_FIXTURE = ROOT / "fixtures" / "lessons" / "supabase-table-editor.pdf"
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Voice coach for stage-4 onboarding")
-    parser.add_argument("command", choices=("demo", "serve", "live", "speak", "write-fixture"))
+    parser.add_argument(
+        "command",
+        choices=(
+            "demo",
+            "serve",
+            "live",
+            "speak",
+            "write-fixture",
+            "write-supabase-fixture",
+            "latency-report",
+            "app",
+        ),
+    )
     parser.add_argument("--port", type=int, default=None)
+    parser.add_argument("--kind", choices=("voice", "browser", "vision"), default="voice")
+    parser.add_argument("--min-samples", type=int, default=100)
     args = parser.parse_args()
     settings = load_settings()
     if args.command == "write-fixture":
         write_lesson_pdf(FIXTURE, ONBOARDING_PAGES)
         print(FIXTURE)
         return
+    if args.command == "write-supabase-fixture":
+        write_lesson_pdf(SUPABASE_FIXTURE, SUPABASE_STAGING_PAGES)
+        print(SUPABASE_FIXTURE)
+        return
     if args.command == "serve":
         _serve(args.port or settings.sandbox_port)
+        return
+    if args.command == "app":
+        from coach.control_app import run_control_app
+
+        run_control_app(settings, port=args.port or 8787)
+        return
+    if args.command == "latency-report":
+        from coach.latency import report_file
+
+        try:
+            report = report_file(
+                settings.latency_log,
+                kind=args.kind,
+                min_samples=args.min_samples,
+            )
+        except (OSError, ValueError, AssertionError) as error:
+            raise SystemExit(str(error)) from error
+        print(json.dumps({"kind": args.kind, **report}, ensure_ascii=False))
         return
     if args.command == "demo":
         _demo(settings)
@@ -154,6 +192,7 @@ def _live_mic(settings) -> None:
     from coach.browser_bridge import BrowserLessonBridge
     from coach.live import run_live
     from coach.privacy import BrowserAudit
+    from coach.progress import ProgressStore
     from coach.session import LearningSession
     from coach.targets import BrowserTarget, TargetManifest
 
@@ -163,7 +202,19 @@ def _live_mic(settings) -> None:
         manifest = TargetManifest.load(settings.target_manifest) if settings.target_manifest else None
         if manifest is not None:
             plan = manifest.apply(plan)
+        keyboard_repair = bool(
+            settings.keyboard_repair == "target_only"
+            and manifest is not None
+            and manifest.accessibility.keyboard_repair_allowed
+        )
         origins = settings.allowed_origins or (manifest.origins if manifest else ())
+        if manifest is not None and settings.allowed_origins:
+            reviewed_target = BrowserTarget(allowed_origins=manifest.origins)
+            unreviewed = [origin for origin in settings.allowed_origins if not reviewed_target.permits(origin)]
+            if unreviewed:
+                raise RuntimeError(
+                    "COACH_ALLOWED_ORIGINS must be a subset of the reviewed manifest origins"
+                )
         sandbox_mode = not settings.cdp_url
         navigation_mode = "coach_list" if sandbox_mode else settings.navigation_mode
         target = BrowserTarget(
@@ -176,6 +227,8 @@ def _live_mic(settings) -> None:
         )
         if target.external and not target.allowed_origins:
             raise RuntimeError("COACH_ALLOWED_ORIGINS or COACH_TARGET_MANIFEST is required for CDP")
+        if target.external and not target.permits(settings.start_url):
+            raise RuntimeError("COACH_START_URL is outside the approved browser origins")
         audit = BrowserAudit()
         session = LearningSession(
             plan,
@@ -183,6 +236,12 @@ def _live_mic(settings) -> None:
             llm=maybe_llm(settings),
             vision_enabled=settings.vision_enabled,
             navigation_mode=navigation_mode,
+            navigation_available=(sandbox_mode or settings.inject_navigation),
+            keyboard_repair_enabled=keyboard_repair,
+            progress=ProgressStore(settings.progress_file),
+            assistance_level=settings.assistance_level,
+            speech_policy=settings.speech_policy,
+            defer_llm=True,
         )
         bridge = BrowserLessonBridge(
             plan,
@@ -191,11 +250,14 @@ def _live_mic(settings) -> None:
             headed=settings.headed,
             target=target,
             audit=audit,
+            vision_policy=(manifest.vision if manifest is not None else None),
+            keyboard_repair=keyboard_repair,
         )
         bridge.start()
         session.attach_assist_actions(
             focus=bridge.focus,
             click=bridge.click,
+            repair=bridge.repair,
             set_navigation=bridge.set_navigation,
         )
         try:

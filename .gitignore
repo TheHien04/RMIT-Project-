@@ -1,0 +1,12 @@
+# macOS and editor-local files
+.DS_Store
+.cursor/
+.pytest_cache/
+
+# Local reference repositories. The application consumes published packages,
+# not these working copies.
+Who-Speak-AI/
+pipecat/
+
+# Generated macOS application bundle. Rebuild from coach/app_launcher/.
+coach/Coach Companion.app/

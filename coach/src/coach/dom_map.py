@@ -10,13 +10,35 @@ from coach.lesson import LessonPlan
 NATIVE_TAGS = frozenset({"button", "a", "input", "select", "textarea", "summary"})
 POINTER_EVENTS = ("click", "mousedown", "pointerdown")
 
-DETECT_JS = """
+DETECT_JS = r"""
 (() => {
   const native = new Set(["button", "a", "input", "select", "textarea", "summary"]);
   const roles = new Set(["button", "link"]);
   const events = ["click", "mousedown", "pointerdown"];
   const out = [];
   const seen = new Set();
+  const accessibleName = (el) => {
+    const aria = (el.getAttribute("aria-label") || "").trim();
+    const title = (el.getAttribute("title") || "").trim();
+    if (aria) return aria;
+    if (el.labels && el.labels.length) {
+      const label = [...el.labels].map((item) => item.innerText || "").join(" ").trim();
+      if (label) return label;
+    }
+    const labelledBy = (el.getAttribute("aria-labelledby") || "").trim();
+    if (labelledBy) {
+      const label = labelledBy.split(/\s+/).map((id) => {
+        const node = document.getElementById(id);
+        return node ? (node.innerText || "") : "";
+      }).join(" ").trim();
+      if (label) return label;
+    }
+    const copy = el.cloneNode(true);
+    copy.querySelectorAll?.('[aria-hidden="true"]').forEach((node) => node.remove());
+    const text = (copy.textContent || "").trim();
+    return text || title || (el.getAttribute("placeholder") || "").trim()
+      || (el.getAttribute("name") || "").trim();
+  };
   const controlId = (el) => {
     if (el.id) return `id:${el.id}`;
     const parts = [];
@@ -28,7 +50,7 @@ DETECT_JS = """
     }
     return `path:${parts.join("/")}`;
   };
-  for (const el of document.querySelectorAll("body *")) {
+  for (const [domOrder, el] of [...document.querySelectorAll("body *")].entries()) {
     const style = getComputedStyle(el);
     if (style.display === "none" || style.visibility === "hidden") continue;
     const rect = el.getBoundingClientRect();
@@ -46,13 +68,13 @@ DETECT_JS = """
       if (events.some((name) => listeners[name] && listeners[name].length)) reason = "click-listener";
     }
     if (!reason) continue;
-    const text = (el.innerText || el.getAttribute("aria-label") || "").trim();
+    const text = accessibleName(el);
     if (!text) continue;
     const key = [tag, text, Math.round(rect.x), Math.round(rect.y)].join("|");
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({
-      id: controlId(el), text, tag, reason,
+      id: controlId(el), text, tag, reason, domOrder,
       x: rect.x, y: rect.y, width: rect.width, height: rect.height,
     });
   }
@@ -117,7 +139,14 @@ INSTALL_KEYS_JS = """
 """
 
 SET_NAVIGATION_JS = """
-(enabled) => {
+({ enabled, expectedUrl, allowedOrigins }) => {
+  const allowed = !allowedOrigins.length || allowedOrigins.some((item) => {
+    if (item.startsWith('https://*.')) {
+      return location.protocol === 'https:' && location.origin.endsWith(item.slice('https://*'.length));
+    }
+    return location.origin === item;
+  });
+  if ((expectedUrl && location.href !== expectedUrl) || !allowed) return false;
   if (!window.__coachKeys) return false;
   window.__coachKeys.enabled = Boolean(enabled);
   window.__coachKeys.bump = "";
@@ -174,7 +203,14 @@ READ_JS = """
 """
 
 MOVE_JS = """
-(label) => {
+({ label, expectedUrl, allowedOrigins }) => {
+  const allowed = !allowedOrigins.length || allowedOrigins.some((item) => {
+    if (item.startsWith('https://*.')) {
+      return location.protocol === 'https:' && location.origin.endsWith(item.slice('https://*'.length));
+    }
+    return location.origin === item;
+  });
+  if ((expectedUrl && location.href !== expectedUrl) || !allowed) return false;
   const el = [...document.querySelectorAll("[data-coach-key]")].find(
     (node) => (node.innerText || "").trim() === label
   );
@@ -188,7 +224,14 @@ MOVE_JS = """
 """
 
 CONTROL_ACTION_JS = """
-({ id, action }) => {
+({ id, action, label, expectedUrl, allowedOrigins }) => {
+  const allowed = !allowedOrigins.length || allowedOrigins.some((item) => {
+    if (item.startsWith('https://*.')) {
+      return location.protocol === 'https:' && location.origin.endsWith(item.slice('https://*'.length));
+    }
+    return location.origin === item;
+  });
+  if ((expectedUrl && location.href !== expectedUrl) || !allowed) return false;
   const controlId = (el) => {
     if (el.id) return `id:${el.id}`;
     const parts = [];
@@ -211,7 +254,175 @@ CONTROL_ACTION_JS = """
     target.click();
     return true;
   }
+  if (action === "repair") {
+    const native = new Set(["BUTTON", "A", "INPUT", "SELECT", "TEXTAREA", "SUMMARY"]);
+    if (native.has(target.tagName)) return false;
+    if (!target.hasAttribute("role")) target.setAttribute("role", "button");
+    if (!target.hasAttribute("tabindex") || Number(target.getAttribute("tabindex")) < 0) {
+      target.setAttribute("tabindex", "0");
+    }
+    if (!target.hasAttribute("aria-label") && label) target.setAttribute("aria-label", label);
+    if (!target.dataset.coachKeyboardRepair) {
+      target.dataset.coachKeyboardRepair = "1";
+      target.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        target.click();
+      });
+    }
+    return target.getAttribute("role") === "button" && target.tabIndex === 0;
+  }
   return false;
+}
+"""
+
+TARGETED_REPAIR_JS = """
+({ label, expectedUrl, allowedOrigins }) => {
+  const allowed = !allowedOrigins.length || allowedOrigins.some((item) => {
+    if (item.startsWith('https://*.')) {
+      return location.protocol === 'https:' && location.origin.endsWith(item.slice('https://*'.length));
+    }
+    return location.origin === item;
+  });
+  if ((expectedUrl && location.href !== expectedUrl) || !allowed) return false;
+  const wanted = String(label || "").trim();
+  if (!wanted) return false;
+  const native = new Set(["BUTTON", "A", "INPUT", "SELECT", "TEXTAREA", "SUMMARY"]);
+  const visible = (el) => {
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    return style.display !== "none" && style.visibility !== "hidden"
+      && rect.width >= 1 && rect.height >= 1;
+  };
+  const exact = [...document.querySelectorAll("body *")].filter(
+    (el) => visible(el) && (el.innerText || "").trim() === wanted
+  );
+  const candidates = new Set();
+  for (const leaf of exact) {
+    let candidate = null;
+    for (let node = leaf; node && node !== document.body; node = node.parentElement) {
+      const role = node.getAttribute("role");
+      if (native.has(node.tagName) || role === "button" || role === "link") {
+        candidate = null;
+        break;
+      }
+      const style = getComputedStyle(node);
+      const clickLike = style.cursor === "pointer"
+        || node.hasAttribute("onclick")
+        || node.hasAttribute("onmousedown")
+        || node.hasAttribute("onpointerdown");
+      // cursor is inherited, so keep walking to select the outer edge of the
+      // click surface rather than turning its heading into a button.
+      if (clickLike) candidate = node;
+      else if (candidate) break;
+    }
+    if (candidate) candidates.add(candidate);
+  }
+  // Never guess when the same reviewed label identifies multiple cards.
+  if (candidates.size !== 1) return false;
+  const target = [...candidates][0];
+  if (!target.hasAttribute("role")) target.setAttribute("role", "button");
+  if (!target.hasAttribute("tabindex") || Number(target.getAttribute("tabindex")) < 0) {
+    target.setAttribute("tabindex", "0");
+  }
+  if (!target.hasAttribute("aria-label")) target.setAttribute("aria-label", wanted);
+  if (!target.dataset.coachKeyboardRepair) {
+    target.dataset.coachKeyboardRepair = "1";
+    target.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      target.click();
+    });
+  }
+  return target.getAttribute("role") === "button" && target.tabIndex === 0;
+}
+"""
+
+
+FORM_ACCESSIBILITY_JS = """
+() => {
+  // This is a session-only compatibility layer for the reviewed Supabase
+  // create-table form. It never fills a value or activates a control without
+  // a key pressed by the learner.
+  const inCreateTable = () => Boolean(document.querySelector('[data-testid="table-name-input"]'));
+  const annotate = () => {
+    if (!inCreateTable()) return;
+    document.querySelectorAll('button[role="combobox"]').forEach((button) => {
+      if (button.hasAttribute('aria-label')) return;
+      const current = (button.innerText || '').replace(/\\s+/g, ' ').trim();
+      if (current) button.setAttribute('aria-label', `Column type, current ${current}`);
+    });
+  };
+  annotate();
+  if (window.__coachFormAccessibilityV2Installed) return true;
+  window.__coachFormAccessibilityV2Installed = true;
+  window.__coachFormKeyAction = null;
+  const focusNewColumnName = (before) => {
+    const attempts = [0, 50, 150, 300];
+    attempts.forEach((delay) => setTimeout(() => {
+      const names = [...document.querySelectorAll('input[aria-label="Column name"]')];
+      if (names.length > before && document.activeElement !== names[names.length - 1]) {
+        names[names.length - 1].focus();
+      }
+      annotate();
+    }, delay));
+  };
+  const refocusPrimary = (index) => {
+    [0, 50, 150].forEach((delay) => setTimeout(() => {
+      const boxes = [...document.querySelectorAll(
+        'button[role="checkbox"][aria-label*="primary key"]'
+      )];
+      if (boxes[index] && document.activeElement !== boxes[index]) boxes[index].focus();
+    }, delay));
+  };
+  window.addEventListener('keydown', (event) => {
+    if (!inCreateTable()) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (
+      target.matches('button[role="checkbox"]')
+      && (target.getAttribute('aria-label') || '').toLowerCase().includes('primary key')
+    ) {
+      const boxes = [...document.querySelectorAll(
+        'button[role="checkbox"][aria-label*="primary key"]'
+      )];
+      const index = boxes.indexOf(target);
+      if (event.key === ' ') {
+        refocusPrimary(index);
+        return;
+      }
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      event.stopPropagation();
+      window.__coachFormKeyAction = {
+        kind: 'primary_enter',
+        index,
+        sequence: (window.__coachFormKeySequence = (window.__coachFormKeySequence || 0) + 1),
+      };
+      return;
+    }
+    if (
+      event.key === 'Enter'
+      && target.matches('button')
+      && (target.innerText || '').trim() === 'Add column'
+    ) {
+      const before = document.querySelectorAll('input[aria-label="Column name"]').length;
+      focusNewColumnName(before);
+    }
+  }, true);
+  new MutationObserver(annotate).observe(document.documentElement, {subtree: true, childList: true});
+  return true;
+}
+"""
+
+
+READ_FORM_ACCESSIBILITY_ACTION_JS = """
+() => {
+  const action = window.__coachFormKeyAction || null;
+  window.__coachFormKeyAction = null;
+  return action;
 }
 """
 
@@ -223,6 +434,7 @@ class DetectedControl:
     reason: str
     box: Box
     control_id: str = ""
+    dom_order: int = -1
 
 
 @dataclass(frozen=True)
@@ -243,6 +455,8 @@ class KeyState:
 
 
 def order_controls(controls: tuple[DetectedControl, ...] | list[DetectedControl]) -> tuple[DetectedControl, ...]:
+    if controls and all(control.dom_order >= 0 for control in controls):
+        return tuple(sorted(controls, key=lambda control: control.dom_order))
     return tuple(sorted(controls, key=lambda control: (control.box.y, control.box.x)))
 
 
@@ -290,7 +504,7 @@ def resolve(binding: StepBinding, chosen: DetectedControl) -> StepBinding:
 
 def controls_from_raw(raw: list[dict]) -> tuple[DetectedControl, ...]:
     controls = []
-    for item in raw:
+    for index, item in enumerate(raw):
         controls.append(
             DetectedControl(
                 text=str(item.get("text") or "").strip(),
@@ -303,6 +517,7 @@ def controls_from_raw(raw: list[dict]) -> tuple[DetectedControl, ...]:
                     height=float(item["height"]),
                 ),
                 control_id=str(item.get("id") or ""),
+                dom_order=int(item.get("domOrder", index)),
             )
         )
     return prefer_leaves(order_controls(controls))
@@ -319,6 +534,20 @@ class PageControls:
     def install(self) -> None:
         self.page.evaluate(INSTALL_KEYS_JS)
         self.refresh()
+
+    def install_form_accessibility(self) -> bool:
+        """Install session-only keyboard and naming fixes for reviewed forms."""
+
+        return bool(self.page.evaluate(FORM_ACCESSIBILITY_JS))
+
+    def process_form_accessibility_action(self) -> str:
+        """Translate a learner's Enter into the native key the widget supports."""
+
+        action = self.page.evaluate(READ_FORM_ACCESSIBILITY_ACTION_JS)
+        if not isinstance(action, dict) or action.get("kind") != "primary_enter":
+            return ""
+        self.page.keyboard.press("Space")
+        return "primary_enter"
 
     def refresh(self) -> tuple[DetectedControl, ...]:
         controls = self.detect()
@@ -364,34 +593,139 @@ class PageControls:
             enabled=bool(raw.get("enabled")),
         )
 
-    def move_to(self, label: str) -> bool:
+    def move_to(
+        self,
+        label: str,
+        *,
+        expected_url: str = "",
+        allowed_origins: tuple[str, ...] = (),
+    ) -> bool:
         """Assist focus only. The person still performs a native activation."""
 
         control = self._control_named(label)
         if control is None:
             return False
         if self.inject_navigation:
-            return bool(self.page.evaluate(MOVE_JS, label))
-        return self._action(control, "focus")
+            return bool(
+                self.page.evaluate(
+                    MOVE_JS,
+                    {
+                        "label": label,
+                        "expectedUrl": expected_url,
+                        "allowedOrigins": list(allowed_origins),
+                    },
+                )
+            )
+        return self._action(
+            control,
+            "focus",
+            expected_url=expected_url,
+            allowed_origins=allowed_origins,
+        )
 
-    def click_label(self, label: str) -> bool:
+    def click_label(
+        self,
+        label: str,
+        *,
+        expected_url: str = "",
+        allowed_origins: tuple[str, ...] = (),
+    ) -> bool:
         control = self._control_named(label)
-        return bool(control and self._action(control, "click"))
+        return bool(
+            control
+            and self._action(
+                control,
+                "click",
+                expected_url=expected_url,
+                allowed_origins=allowed_origins,
+            )
+        )
 
-    def set_navigation(self, enabled: bool) -> bool:
+    def repair_label(
+        self,
+        label: str,
+        *,
+        expected_url: str = "",
+        allowed_origins: tuple[str, ...] = (),
+    ) -> bool:
+        """Make one exact reviewed click-only target keyboard operable.
+
+        This never focuses or activates the target. The learner still reaches
+        it with Tab and activates it with Enter or Space.
+        """
+
+        control = self._control_named(label)
+        if control is not None and control.reason in {"onclick", "click-listener"}:
+            return self._action(
+                control,
+                "repair",
+                label=label,
+                expected_url=expected_url,
+                allowed_origins=allowed_origins,
+            )
+        # React commonly delegates clicks to the document, so DevTools cannot
+        # see a listener on the visual card itself. For an otherwise unbound
+        # reviewed target, repair one uniquely named pointer surface only.
+        return bool(
+            self.page.evaluate(
+                TARGETED_REPAIR_JS,
+                {
+                    "label": label,
+                    "expectedUrl": expected_url,
+                    "allowedOrigins": list(allowed_origins),
+                },
+            )
+        )
+
+    def set_navigation(
+        self,
+        enabled: bool,
+        *,
+        expected_url: str = "",
+        allowed_origins: tuple[str, ...] = (),
+    ) -> bool:
         if not self.inject_navigation:
             return False
-        self.install()
-        return bool(self.page.evaluate(SET_NAVIGATION_JS, enabled))
+        if not expected_url:
+            self.install()
+        return bool(
+            self.page.evaluate(
+                SET_NAVIGATION_JS,
+                {
+                    "enabled": enabled,
+                    "expectedUrl": expected_url,
+                    "allowedOrigins": list(allowed_origins),
+                },
+            )
+        )
 
     def _control_named(self, label: str) -> DetectedControl | None:
         matches = [control for control in self.detect() if control.text.strip() == label.strip()]
         return matches[0] if len(matches) == 1 else None
 
-    def _action(self, control: DetectedControl, action: str) -> bool:
+    def _action(
+        self,
+        control: DetectedControl,
+        action: str,
+        *,
+        label: str = "",
+        expected_url: str = "",
+        allowed_origins: tuple[str, ...] = (),
+    ) -> bool:
         if not control.control_id:
             return False
-        return bool(self.page.evaluate(CONTROL_ACTION_JS, {"id": control.control_id, "action": action}))
+        return bool(
+            self.page.evaluate(
+                CONTROL_ACTION_JS,
+                {
+                    "id": control.control_id,
+                    "action": action,
+                    "label": label,
+                    "expectedUrl": expected_url,
+                    "allowedOrigins": list(allowed_origins),
+                },
+            )
+        )
 
     def _client(self):
         if self._cdp is None:

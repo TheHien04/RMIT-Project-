@@ -43,12 +43,12 @@ def test_the_person_must_move_before_enter_is_spoken():
     flags = {"panel": "closed", "columns": [], "saved": False}
     assert session.on_page(label="", bump="", flags=flags) == []
     heard = session.on_page(label="Thêm cột", bump="", flags=flags)
-    assert heard[0].text == "Thêm cột."
+    assert heard == []
     assert session.on_page(label="Thêm cột", bump="", flags=flags) == []
     hit = session.on_page(label="Tạo bảng", bump="", flags=flags)
     assert hit[0].text == "Tạo bảng. Enter."
     opened = session.on_page(label="Tạo bảng", bump="", flags={**flags, "panel": "open"})
     assert session.step.target_label == "Thêm cột"
-    assert "Enter" not in opened[-1].text
+    assert not any(item.text == "Thêm cột. Enter." for item in opened)
     stayed = session.on_page(label="Tạo bảng", bump="", flags={**flags, "panel": "open"})
     assert stayed == []

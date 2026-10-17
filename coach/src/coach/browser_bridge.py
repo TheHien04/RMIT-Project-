@@ -13,14 +13,71 @@ import queue
 import threading
 import time
 from dataclasses import dataclass, replace
-from pathlib import Path
+from typing import Any
 
 from coach.dom_map import KeyState, PageControls, StepBinding, bind_steps
 from coach.agent_browser import AgentBrowserSnapshot
 from coach.lesson import LessonPlan
 from coach.observer import Observation, PageObserver
 from coach.privacy import BrowserAudit
-from coach.targets import BrowserTarget
+from coach.scene import PageScene, SceneConfidence, SceneControl, VisionRequest
+from coach.targets import BrowserTarget, VisionPolicy
+
+
+_MASK_JS = """
+(selectors) => {
+  const defaults = [
+    'input', 'textarea', 'select', '[contenteditable="true"]', '[role="textbox"]',
+    'iframe', 'canvas', 'video'
+  ];
+  const allSelectors = [...defaults, ...selectors];
+  for (const selector of allSelectors) {
+    try { document.querySelector(selector); }
+    catch (error) { return {ok: false, count: 0, invalid: selector}; }
+  }
+  const roots = [document];
+  for (let index = 0; index < roots.length; index += 1) {
+    for (const node of roots[index].querySelectorAll('*')) {
+      if (node.shadowRoot) roots.push(node.shadowRoot);
+    }
+  }
+  const selected = [];
+  for (const root of roots) {
+    for (const selector of allSelectors) selected.push(...root.querySelectorAll(selector));
+    let style = root.querySelector('#coach-vision-mask-style');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'coach-vision-mask-style';
+      style.textContent = `
+        [data-coach-vision-mask="1"], [data-coach-vision-mask="1"] * {
+          visibility: hidden !important;
+        }
+      `;
+      (root === document ? document.head : root).appendChild(style);
+    }
+  }
+  const unique = [...new Set(selected)];
+  unique.forEach((node) => node.setAttribute('data-coach-vision-mask', '1'));
+  return {ok: true, count: unique.length, invalid: ''};
+}
+"""
+
+_UNMASK_JS = """
+() => {
+  const roots = [document];
+  for (let index = 0; index < roots.length; index += 1) {
+    for (const node of roots[index].querySelectorAll('*')) {
+      if (node.shadowRoot) roots.push(node.shadowRoot);
+    }
+  }
+  for (const root of roots) {
+    root.querySelectorAll('[data-coach-vision-mask]').forEach(
+      (node) => node.removeAttribute('data-coach-vision-mask')
+    );
+    root.querySelector('#coach-vision-mask-style')?.remove();
+  }
+}
+"""
 
 
 @dataclass(frozen=True)
@@ -28,8 +85,10 @@ class BrowserUpdate:
     bindings: tuple[StepBinding, ...]
     keys: KeyState
     observation: Observation
+    scene: PageScene | None = None
     blocked_reason: str = ""
     mouse_moved: bool = False
+    observed_at: float = 0.0
 
 
 class BrowserLessonBridge:
@@ -44,6 +103,8 @@ class BrowserLessonBridge:
         headed: bool,
         target: BrowserTarget | None = None,
         audit: BrowserAudit | None = None,
+        vision_policy: VisionPolicy | None = None,
+        keyboard_repair: bool = False,
     ) -> None:
         self._plan = plan
         self._loop = loop
@@ -51,8 +112,10 @@ class BrowserLessonBridge:
         self._headed = headed
         self._target = target or BrowserTarget()
         self.audit = audit or BrowserAudit()
+        self._vision_policy = vision_policy or VisionPolicy()
+        self._keyboard_repair = keyboard_repair
         self.updates: asyncio.Queue[BrowserUpdate] = asyncio.Queue()
-        self._commands: queue.Queue[tuple[str, str, queue.Queue[bool]]] = queue.Queue()
+        self._commands: queue.Queue[tuple[str, str, queue.Queue[Any]]] = queue.Queue()
         self._stop = threading.Event()
         self._ready = threading.Event()
         self._error: BaseException | None = None
@@ -79,13 +142,23 @@ class BrowserLessonBridge:
     def set_navigation(self, enabled: bool) -> bool:
         return self._request("navigation", "on" if enabled else "off")
 
-    def _request(self, action: str, label: str) -> bool:
+    def capture_vision(self, question: str) -> VisionRequest | None:
+        result = self._request("capture", question, timeout=4)
+        return result if isinstance(result, VisionRequest) else None
+
+    def repair(self, label: str) -> bool:
+        if not self._keyboard_repair:
+            self.audit.record("accessibility_repair", label=label, allowed=False)
+            return False
+        return bool(self._request("repair", label))
+
+    def _request(self, action: str, label: str, *, timeout: float = 2) -> Any:
         if self._stop.is_set():
             return False
-        reply: queue.Queue[bool] = queue.Queue(maxsize=1)
+        reply: queue.Queue[Any] = queue.Queue(maxsize=1)
         self._commands.put((action, label, reply))
         try:
-            return reply.get(timeout=2)
+            return reply.get(timeout=timeout)
         except queue.Empty:
             return False
 
@@ -126,6 +199,10 @@ class BrowserLessonBridge:
                     controls.install()
                 observer = PageObserver(page)
                 observer.install()
+                if self._keyboard_repair:
+                    controls.install_form_accessibility()
+                cached_detected = ()
+                cached_scene_key = None
                 self._ready.set()
                 while not self._stop.is_set():
                     if not self._target.permits(page.url):
@@ -134,24 +211,50 @@ class BrowserLessonBridge:
                             BrowserUpdate(
                                 bindings=(),
                                 keys=KeyState("", "", -1, {"url": page.url}),
-                                observation=observer.snapshot(),
+                                # Do not evaluate or retain any DOM state after
+                                # the tab leaves its approved origin.
+                                observation=Observation((), None, "", {}),
                                 blocked_reason="Trang này không thuộc origin đã phê duyệt.",
+                                observed_at=time.monotonic(),
                             )
                         )
                         self._stop.wait(self._poll_seconds)
                         continue
-                    self._handle_commands(controls)
-                    detected = controls.refresh()
-                    if semantic is not None:
-                        detected = self._semantic_controls(detected, semantic)
-                    observation = observer.snapshot()
+                    try:
+                        if self._keyboard_repair:
+                            controls.install_form_accessibility()
+                            remapped = controls.process_form_accessibility_action()
+                            if remapped:
+                                self.audit.record(
+                                    "accessibility_key_remap",
+                                    action=remapped,
+                                    persisted=False,
+                                    initiated_by="learner",
+                                )
+                        observation = observer.snapshot()
+                    except Exception as error:
+                        # A navigation can destroy the JavaScript execution
+                        # context between the origin check and snapshot. Retry
+                        # so the next iteration can enforce the new origin.
+                        self.audit.record("browser_poll_retry", error=type(error).__name__)
+                        self._stop.wait(self._poll_seconds)
+                        continue
+                    if not self._target.permits(page.url):
+                        continue
+                    scene_key = (page.url, observation.revision)
+                    if scene_key != cached_scene_key:
+                        cached_detected = controls.refresh()
+                        if semantic is not None:
+                            cached_detected = self._semantic_controls(cached_detected, semantic)
+                        cached_scene_key = scene_key
+                    detected = cached_detected
                     raw_keys = controls.read()
                     flags = dict(observation.flags)
                     flags.update(
                         {
                             "url": page.url,
                             "focused": observation.focused_text,
-                            "visible_text": self._visible_completion_text(page, detected),
+                            "dom_probes": self._reviewed_dom_probes(page),
                         }
                     )
                     keys = KeyState(
@@ -161,12 +264,16 @@ class BrowserLessonBridge:
                         flags=flags,
                         enabled=raw_keys.enabled,
                     )
+                    scene = self._scene(page, observation, detected, ())
+                    self._handle_commands(controls, page, scene)
                     self._publish(
                         BrowserUpdate(
                             bindings=bind_steps(self._plan, detected),
                             keys=keys,
                             observation=observation,
+                            scene=scene,
                             mouse_moved=self._mouse_moved(observation),
+                            observed_at=time.monotonic(),
                         )
                     )
                     self._stop.wait(self._poll_seconds)
@@ -219,23 +326,56 @@ class BrowserLessonBridge:
         )
         return tuple(annotated)
 
-    def _visible_completion_text(self, page, detected) -> list[str]:
-        """Check only reviewed probe strings locally; never retain full page text."""
+    def _reviewed_dom_probes(self, page) -> list[str]:
+        """Evaluate only manifest-scoped selectors and return opaque check keys."""
 
-        reviewed = tuple(
-            step.success.value
+        checks = [
+            {
+                "key": step.success.probe_key,
+                "kind": step.success.kind,
+                "selector": step.success.selector,
+                "value": step.success.value,
+            }
             for step in self._plan.steps
-            if step.success.kind == "text_visible" and step.success.value
-        )
-        if not reviewed:
-            return [control.text for control in detected]
+            if step.success.selector
+            and step.success.kind in {
+                "selector_visible",
+                "text_visible",
+                "input_value",
+                "url_path_prefix_and_text",
+            }
+        ]
+        if not checks:
+            return []
         return list(
             page.evaluate(
-                """(values) => {
-                    const text = document.body.innerText || "";
-                    return values.filter((value) => text.includes(value));
+                """(checks) => {
+                    const visible = (node) => {
+                      const style = getComputedStyle(node);
+                      const rect = node.getBoundingClientRect();
+                      return style.display !== 'none' && style.visibility !== 'hidden'
+                        && rect.width > 0 && rect.height > 0;
+                    };
+                    const normalizedText = (node) =>
+                      String(node.innerText || node.textContent || '').replace(/\\s+/g, ' ').trim();
+                    const matched = [];
+                    for (const check of checks) {
+                      let nodes = [];
+                      try { nodes = [...document.querySelectorAll(check.selector)]; }
+                      catch (_error) { continue; }
+                      const ok = nodes.some((node) => {
+                        if (!visible(node)) return false;
+                        if (check.kind === 'selector_visible') return true;
+                        if (check.kind === 'input_value') {
+                          return !node.disabled && String(node.value || '') === check.value;
+                        }
+                        return normalizedText(node) === check.value;
+                      });
+                      if (ok) matched.push(check.key);
+                    }
+                    return matched;
                 }""",
-                list(reviewed),
+                checks,
             )
         )
 
@@ -249,24 +389,154 @@ class BrowserLessonBridge:
         self._last_cursor = current
         return previous is not None and current != previous
 
-    def _handle_commands(self, controls: PageControls) -> None:
+    def _scene(self, page, observation, detected, visible_text) -> PageScene:
+        bound_labels = {
+            binding.label
+            for binding in bind_steps(self._plan, detected)
+            if binding.status == "bound" and binding.label
+        }
+        if not detected:
+            confidence = SceneConfidence.LOW
+        elif bound_labels:
+            confidence = SceneConfidence.HIGH
+        else:
+            confidence = SceneConfidence.MEDIUM
+        return PageScene(
+            url=page.url,
+            title=observation.title,
+            focused_label=observation.focused_text,
+            viewport=observation.viewport,
+            controls=tuple(
+                SceneControl(control.text, control.tag, control.reason, control.box)
+                for control in detected
+            ),
+            visible_probe_values=tuple(str(value) for value in visible_text),
+            confidence=confidence,
+            revision=observation.revision,
+        )
+
+    def _capture(self, page, scene: PageScene, question: str) -> VisionRequest | None:
+        if page.url != scene.url or not self._target.permits(page.url):
+            self.audit.record("vision_denied", reason="stale_or_unapproved_page")
+            return None
+        lesson_labels = tuple(
+            step.target_label for step in self._plan.steps if step.target_label
+        )
+        approved = {label.casefold() for label in lesson_labels}
+        safe_scene = replace(
+            scene,
+            focused_label=(
+                scene.focused_label if scene.focused_label.casefold() in approved else ""
+            ),
+            controls=tuple(
+                control for control in scene.controls if control.label.casefold() in approved
+            ),
+        )
+        crop = _crop_for_question(safe_scene, question)
+        if not self._vision_policy.allowed or (crop is None and not self._vision_policy.overview_allowed):
+            self.audit.record("vision_denied", reason="manifest_policy", path=safe_scene.path)
+            return None
+        if _vision_blocked(safe_scene.path):
+            self.audit.record("vision_denied", reason="sensitive_route", path=safe_scene.path)
+            return None
+        redactions = 0
+        try:
+            mask_result = page.evaluate(_MASK_JS, list(self._vision_policy.sensitive_selectors))
+            if not isinstance(mask_result, dict) or not mask_result.get("ok"):
+                self.audit.record(
+                    "vision_denied",
+                    reason="invalid_sensitive_selector",
+                    selector_chars=len(str((mask_result or {}).get("invalid", ""))),
+                )
+                return None
+            redactions = int(mask_result.get("count", 0))
+            if page.url != safe_scene.url or not self._target.permits(page.url):
+                self.audit.record("vision_denied", reason="page_changed_during_redaction")
+                return None
+            clip = None
+            if crop is not None:
+                clip = {"x": crop[0], "y": crop[1], "width": crop[2], "height": crop[3]}
+            png = page.screenshot(type="png", full_page=False, clip=clip)
+            if page.url != safe_scene.url or not self._target.permits(page.url):
+                self.audit.record("vision_denied", reason="page_changed_during_capture")
+                return None
+        finally:
+            try:
+                page.evaluate(_UNMASK_JS)
+            except Exception:
+                pass
+        self.audit.record(
+            "vision_capture",
+            path=safe_scene.path,
+            bytes=len(png),
+            redactions=redactions,
+            persisted=False,
+        )
+        return VisionRequest(
+            scene=replace(safe_scene, screenshot=png),
+            question=question,
+            candidate_labels=tuple(control.label for control in safe_scene.controls),
+            lesson_labels=lesson_labels,
+            redaction_count=redactions,
+            crop=crop,
+        )
+
+    def _handle_commands(self, controls: PageControls, page, scene: PageScene) -> None:
         while True:
             try:
                 action, label, reply = self._commands.get_nowait()
             except queue.Empty:
                 return
             try:
-                if action == "focus":
-                    result = controls.move_to(label)
+                current_allowed = page.url == scene.url and self._target.permits(page.url)
+                if action != "capture" and not current_allowed:
+                    self.audit.record(
+                        "command_denied",
+                        action=action,
+                        reason="stale_or_unapproved_page",
+                        origin=_origin(page.url),
+                    )
+                    result = False
+                elif action == "focus":
+                    result = controls.move_to(
+                        label,
+                        expected_url=scene.url,
+                        allowed_origins=self._target.allowed_origins,
+                    )
                 elif action == "click":
-                    result = controls.click_label(label)
+                    result = controls.click_label(
+                        label,
+                        expected_url=scene.url,
+                        allowed_origins=self._target.allowed_origins,
+                    )
                 elif action == "navigation":
-                    result = controls.set_navigation(label == "on")
+                    result = controls.set_navigation(
+                        label == "on",
+                        expected_url=scene.url,
+                        allowed_origins=self._target.allowed_origins,
+                    )
+                elif action == "capture":
+                    result = self._capture(page, scene, label)
+                elif action == "repair":
+                    result = controls.repair_label(
+                        label,
+                        expected_url=scene.url,
+                        allowed_origins=self._target.allowed_origins,
+                    )
                 else:
                     result = False
             except Exception:
                 result = False
-            self.audit.record("explicit_assist", action=action, label=label, allowed=result)
+            if action == "repair":
+                self.audit.record(
+                    "accessibility_repair",
+                    label=label,
+                    allowed=bool(result),
+                    persisted=False,
+                    activated=False,
+                )
+            elif action != "capture":
+                self.audit.record("explicit_assist", action=action, label=label, allowed=bool(result))
             reply.put(result)
 
 
@@ -275,3 +545,34 @@ def _origin(url: str) -> str:
 
     parsed = urlsplit(url)
     return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _vision_blocked(path: str) -> bool:
+    folded = path.casefold()
+    return any(
+        marker in folded
+        for marker in (
+            "/login",
+            "/sign-in",
+            "/auth/users",
+            "/billing",
+            "/members",
+            "/settings/api",
+            "/settings/team",
+        )
+    )
+
+
+def _crop_for_question(scene: PageScene, question: str) -> tuple[int, int, int, int] | None:
+    folded = question.casefold()
+    matches = [control.box for control in scene.controls if control.label.casefold() in folded]
+    if not matches:
+        return None
+    padding = 24
+    left = max(0, int(min(box.x for box in matches) - padding))
+    top = max(0, int(min(box.y for box in matches) - padding))
+    right = min(scene.viewport[0], int(max(box.x + box.width for box in matches) + padding))
+    bottom = min(scene.viewport[1], int(max(box.y + box.height for box in matches) + padding))
+    if right <= left or bottom <= top:
+        return None
+    return left, top, right - left, bottom - top

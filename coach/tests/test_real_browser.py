@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import socket
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from coach.__main__ import _background_server
 from coach.browser_bridge import BrowserLessonBridge
-from coach.lesson import plan_from_pages
+from coach.lesson import SuccessCheck, plan_from_pages
 from coach.session import LearningSession
 from coach.targets import BrowserTarget
 
@@ -32,7 +33,7 @@ def test_cdp_attach_observes_native_control_and_url_probe():
     async def scenario():
         from playwright.async_api import async_playwright
 
-        directory = Path(__file__).parents[1] / "fixtures" / "partner"
+        directory = Path(__file__).parents[1] / "fixtures" / "web" / "partner"
         server, url = _background_server(0, directory=directory)
         port = _port()
         try:
@@ -103,7 +104,7 @@ def test_cdp_roleless_control_needs_explicit_assist_or_coach_list():
     async def scenario():
         from playwright.async_api import async_playwright
 
-        directory = Path(__file__).parents[1] / "fixtures" / "partner"
+        directory = Path(__file__).parents[1] / "fixtures" / "web" / "partner"
         server, url = _background_server(0, directory=directory)
         port = _port()
         try:
@@ -115,6 +116,20 @@ def test_cdp_roleless_control_needs_explicit_assist_or_coach_list():
                 page = await browser.new_page()
                 await page.goto(url + "/roleless.html")
                 plan = plan_from_pages(['Trang div-only\nBước 1. Mở "Mở bảng".\n[xong: thấy chữ "Bảng đã mở"]'])
+                plan = replace(
+                    plan,
+                    steps=(
+                        replace(
+                            plan.steps[0],
+                                assist_click_allowed=True,
+                            success=SuccessCheck(
+                                "text_visible",
+                                value="Bảng đã mở",
+                                selector="#result",
+                            ),
+                        ),
+                    ),
+                )
                 bridge = BrowserLessonBridge(
                     plan,
                     loop=asyncio.get_running_loop(),
@@ -146,7 +161,7 @@ def test_cdp_roleless_control_needs_explicit_assist_or_coach_list():
                     assert "Mình đã bấm Mở bảng." in session.on_user_text("bấm giúp")[0].text
                     for _ in range(30):
                         update = await asyncio.wait_for(bridge.updates.get(), timeout=2)
-                        if "Bảng đã mở" in update.keys.flags["visible_text"]:
+                        if plan.steps[0].success.probe_key in update.keys.flags["dom_probes"]:
                             break
                     assert plan.steps[0].success.met(update.keys.flags)
                     session.note_bindings(update.bindings)
@@ -174,7 +189,7 @@ def test_cdp_bridge_stops_observing_on_an_unapproved_origin():
     async def scenario():
         from playwright.async_api import async_playwright
 
-        directory = Path(__file__).parents[1] / "fixtures" / "partner"
+        directory = Path(__file__).parents[1] / "fixtures" / "web" / "partner"
         server, url = _background_server(0, directory=directory)
         port = _port()
         try:

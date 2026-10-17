@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f6f7fb">
+    <title>Coach Companion</title>
+    <meta name="description" content="Coach Companion đồng hành bằng giọng nói khi bạn học công nghệ mới.">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#control-panel">Đi tới điều khiển Voice Coach</a>
+    <header class="site-header">
+      <a class="brand" href="#main" aria-label="Coach Companion, trang chính">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M7 17a9 9 0 0 1 18 0v4a3 3 0 0 1-3 3h-2v-9h5M7 15v9H5a3 3 0 0 1-3-3v-4a14 14 0 0 1 28 0v4"></path><path d="M20 25c0 2-1.8 3-4 3h-2"></path></svg>
+        </span>
+        <span class="brand-copy"><strong>Coach Companion</strong></span>
+      </a>
+      <div class="local-badge"><span class="local-dot" aria-hidden="true"></span>Riêng tư trên máy bạn</div>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <div class="workspace">
+        <section id="control-panel" class="control-panel" aria-labelledby="control-title" tabindex="-1" data-state="stopped">
+          <div class="panel-top">
+            <div class="voice-presence" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="panel-heading">
+              <p class="section-kicker">Đồng hành cùng bạn</p>
+              <h1 id="control-title">Sẵn sàng khi bạn cần</h1>
+              <p id="control-message" class="control-message">Coach đang nghỉ.</p>
+            </div>
+            <div class="state-pill" data-state="stopped"><span class="state-dot" aria-hidden="true"></span><span id="state-label">Đã tắt</span></div>
+          </div>
+          <div class="session-strip" aria-label="Thông tin phiên"><span>Bài học · Tạo bảng trong Supabase</span><span id="session-duration" hidden>Phiên 00:00</span></div>
+          <div id="live-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+          <div id="error-box" class="error-box" role="alert" tabindex="-1" hidden></div>
+
+          <button id="voice-button" class="voice-button" type="button" aria-pressed="false" aria-describedby="voice-button-hint">
+            <span class="button-icon" aria-hidden="true">
+              <svg class="mic-icon" viewBox="0 0 32 32"><rect x="11" y="3" width="10" height="18" rx="5"></rect><path d="M7 16a9 9 0 0 0 18 0M16 25v4M11 29h10"></path></svg>
+              <svg class="stop-icon" viewBox="0 0 32 32"><rect x="8" y="8" width="16" height="16" rx="3"></rect></svg>
+            </span>
+            <span class="button-copy"><span id="voice-button-label" class="button-label">Bắt đầu hướng dẫn</span><span id="voice-button-hint" class="button-hint">Coach sẽ nghe và đồng hành cùng bạn</span></span>
+            <svg class="button-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"></path></svg>
+          </button>
+
+          <div class="readiness-grid" aria-label="Trạng thái kết nối">
+            <div id="browser-readiness" class="readiness-item" data-status="checking">
+              <span class="readiness-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"></rect><path d="M8 21h8M12 18v3"></path></svg></span>
+              <div><span>Trang bạn đang học</span><strong id="browser-status">Đang kiểm tra…</strong></div>
+              <svg class="check-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10 3 3 7-7"></path></svg>
+            </div>
+            <div id="voice-readiness" class="readiness-item" data-status="waiting">
+              <span class="readiness-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a4 4 0 0 0-4 4v5a4 4 0 0 0 8 0V7a4 4 0 0 0-4-4Z"></path><path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v3"></path></svg></span>
+              <div><span>Giọng nói</span><strong id="voice-status">Sẽ kiểm tra khi bắt đầu</strong></div>
+              <svg class="check-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10 3 3 7-7"></path></svg>
+            </div>
+          </div>
+          <button id="browser-button" class="secondary-button" type="button" hidden>Mở Supabase để học</button>
+        </section>
+      </div>
+
+      <section class="principles" aria-label="Nguyên tắc của Coach Companion">
+        <div>
+          <span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10 3 3 7-7"></path></svg>Bạn tự làm</span>
+          <span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10 3 3 7-7"></path></svg>Nhắc đúng lúc</span>
+          <span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10 3 3 7-7"></path></svg>Riêng tư trên máy</span>
+        </div>
+      </section>
+
+      <section id="commands" class="commands" aria-labelledby="help-title">
+        <div class="section-head">
+          <div><p class="section-kicker">Không cần nói đúng từng chữ</p><h2 id="help-title">Khi cần, cứ nói.</h2></div>
+        </div>
+        <ul class="command-grid">
+          <li><span class="command-cue" aria-hidden="true">Nói</span><div><strong>“Gợi ý”</strong><p class="sr-only">Cho mình thêm một gợi ý nhỏ.</p></div></li>
+          <li><span class="command-cue" aria-hidden="true">Nói</span><div><strong>“Xong bước này”</strong><p class="sr-only">Kiểm tra và cùng mình đi tiếp.</p></div></li>
+          <li><span class="command-cue" aria-hidden="true">Nói</span><div><strong>“Hoàn thành bài học”</strong><p class="sr-only">Kiểm tra xem cả bài đã xong chưa.</p></div></li>
+          <li><span class="command-cue" aria-hidden="true">Nói</span><div><strong>“Dừng hướng dẫn”</strong><p class="sr-only">Dừng lại ở đây và giữ nguyên tiến độ.</p></div></li>
+          <li><span class="command-cue" aria-hidden="true">Nói</span><div><strong>“Mục tiêu bài học”</strong><p class="sr-only">Nhắc mình đang học kỹ năng gì.</p></div></li>
+          <li><span class="command-cue" aria-hidden="true">Nói</span><div><strong>“Bài tự luyện”</strong><p class="sr-only">Cho mình thử một nhiệm vụ mới.</p></div></li>
+        </ul>
+      </section>
+
+    </main>
+    <footer><div><strong>Coach Companion</strong></div><button id="quit-button" class="text-button" type="button">Thoát ứng dụng</button></footer>
+
+    <dialog id="quit-dialog" class="confirm-dialog" aria-labelledby="quit-title" aria-describedby="quit-description">
+      <div class="dialog-icon" aria-hidden="true">×</div>
+      <h2 id="quit-title">Thoát Coach Companion?</h2>
+      <p id="quit-description">Voice Coach sẽ dừng, micro được giải phóng và Chrome dành cho Coach sẽ đóng. Tiến độ học vẫn được giữ lại.</p>
+      <div class="dialog-actions">
+        <button id="quit-cancel" class="dialog-cancel" type="button">Ở lại</button>
+        <button id="quit-confirm" class="dialog-confirm" type="button">Thoát an toàn</button>
+      </div>
+    </dialog>
+
+    <main id="closed-view" class="closed-view" tabindex="-1" hidden>
+      <section class="closed-card" aria-labelledby="closed-title">
+        <span class="closed-icon" aria-hidden="true">✓</span>
+        <p class="section-kicker">Đã kết thúc phiên</p>
+        <h1 id="closed-title">Coach Companion đã đóng an toàn.</h1>
+        <p>Micro đã được giải phóng, Chrome dành cho Coach đã đóng và tiến độ của bạn vẫn được giữ lại.</p>
+        <button id="close-tab-button" class="secondary-button" type="button">Đóng tab này</button>
+        <p id="close-tab-hint" class="close-tab-hint">Nếu trình duyệt không tự đóng, nhấn Command và W.</p>
+      </section>
+    </main>
+  </body>
+</html>

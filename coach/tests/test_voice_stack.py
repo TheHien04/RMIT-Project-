@@ -64,3 +64,4 @@ def test_pipeline_order_and_live_builder_stays_optional():
     assert built["stages"] == PIPELINE_STAGES
     assert built["pipeline"] is not None
     assert built["runner"] is not None
+    assert built["barge"] is not None

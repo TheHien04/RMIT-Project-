@@ -18,11 +18,12 @@ from pipecat.transports.base_transport import BaseTransport, TransportParams
 
 
 class SoundDeviceTransport(BaseTransport):
-    def __init__(self, params: TransportParams):
+    def __init__(self, params: TransportParams, *, on_audio_started=None):
         super().__init__(name="sounddevice")
         self._params = params
         self._input: _Input | None = None
         self._output: _Output | None = None
+        self._on_audio_started = on_audio_started
 
     def input(self) -> FrameProcessor:
         if self._input is None:
@@ -31,7 +32,7 @@ class SoundDeviceTransport(BaseTransport):
 
     def output(self) -> FrameProcessor:
         if self._output is None:
-            self._output = _Output(self._params)
+            self._output = _Output(self._params, on_audio_started=self._on_audio_started)
         return self._output
 
 
@@ -105,11 +106,13 @@ class _Input(BaseInputTransport):
 
 
 class _Output(BaseOutputTransport):
-    def __init__(self, params: TransportParams):
+    def __init__(self, params: TransportParams, *, on_audio_started=None):
         super().__init__(params)
         self._stream = None
         self._pending = bytearray()
         self._pending_lock = threading.Lock()
+        self._on_audio_started = on_audio_started
+        self._notified_audio = False
 
     async def setup(self, setup: FrameProcessorSetup):
         await super().setup(setup)
@@ -144,6 +147,7 @@ class _Output(BaseOutputTransport):
         pcm = _match_rate(frame.audio, frame.sample_rate, self.sample_rate)
         with self._pending_lock:
             self._pending.extend(pcm)
+        self._notified_audio = False
         # BaseOutputTransport expects this coroutine to pace audio. The old
         # blocking stream.write() could hang on macOS and hit its 10s timeout.
         duration = len(pcm) / (self.sample_rate * self._params.audio_out_channels * 2)
@@ -157,6 +161,9 @@ class _Output(BaseOutputTransport):
             if count:
                 output[:count] = self._pending[:count]
                 del self._pending[:count]
+                if not self._notified_audio and self._on_audio_started is not None:
+                    self._notified_audio = True
+                    self._on_audio_started()
         if count < len(output):
             output[count:] = b"\x00" * (len(output) - count)
 

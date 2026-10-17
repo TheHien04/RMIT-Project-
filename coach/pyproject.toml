@@ -3,7 +3,7 @@ name = "onboard-coach"
 version = "0.1.0"
 description = "Local voice coach for visually impaired workplace onboarding"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "edge-tts>=7",
     "fpdf2>=2.8",
@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pip-audit>=2.9", "pytest>=8"]
 voice = [
     "faster-whisper>=1.1",
     "mlx-whisper>=0.4",

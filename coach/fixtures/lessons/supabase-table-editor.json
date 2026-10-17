@@ -1,0 +1,148 @@
+{
+  "origins": ["https://supabase.com"],
+  "vision": {
+    "allowed": true,
+    "overview_allowed": true,
+    "sensitive_selectors": [
+      "input",
+      "textarea",
+      "[contenteditable='true']",
+      "[data-testid*='api-key']",
+      "[data-testid*='token']"
+    ]
+  },
+  "accessibility": {
+    "keyboard_repair_allowed": true
+  },
+  "learning": {
+    "objective": "Tự điều hướng bằng bàn phím và tạo được một bảng Supabase có cấu hình an toàn cơ bản mà không cần AI thao tác thay.",
+    "bloom_level": "apply",
+    "authentic_scenario": "Bạn đang chuẩn bị bảng công việc cho một nhóm nhỏ và cần tạo cấu trúc dữ liệu thật trên Supabase staging.",
+    "concept_summary": "Bạn vừa thực hành một mẫu có thể dùng lại: tìm vùng chức năng, mở biểu mẫu, nhập dữ liệu, kiểm tra lựa chọn và tự xác nhận thao tác ghi.",
+    "reflection_prompt": "Nhìn lại một chút: khi gặp danh sách Type hoặc một control lạ, bạn đã dùng phím nào để khám phá và chọn nó?",
+    "transfer_task": "Trong lần luyện tiếp theo, hãy tự tạo một bảng khác và thêm ít nhất một cột mới; chỉ yêu cầu gợi ý khi bạn thật sự bị kẹt.",
+    "success_evidence": [
+      "Đi tới đúng Table Editor bằng bàn phím",
+      "Mở Create a table và nhập tên bảng",
+      "Tự kiểm tra rồi lưu bảng",
+      "Lặp lại được thao tác tương tự với ít gợi ý hơn"
+    ]
+  },
+  "controls": [
+    {
+      "label": "Project Overview",
+      "function": "Trang đầu của project. Cho xem trạng thái dịch vụ, thông tin kết nối và lối tắt sang các phần khác."
+    },
+    {
+      "label": "Table Editor",
+      "function": "Nơi xem và sửa dữ liệu trong bảng. Có thể thêm dòng, sửa ô, lọc dữ liệu và tạo bảng mới.",
+      "region": "thanh điều hướng project",
+      "role": "liên kết"
+    },
+    {
+      "label": "Create a table",
+      "function": "Mở biểu mẫu tạo một bảng database mới. Người học tự nhập thông tin và tự xác nhận lưu.",
+      "region": "vùng nội dung chính của Table Editor",
+      "role": "nút"
+    },
+    {
+      "label": "Name",
+      "function": "Tên kỹ thuật của bảng. Bài thực hành dùng coach_demo_tasks.",
+      "region": "đầu biểu mẫu Create a new table",
+      "role": "ô nhập"
+    },
+    {
+      "label": "Save",
+      "function": "Tạo bảng với cấu hình đang hiển thị. Đây là thao tác ghi thật vào Supabase staging và chỉ người học tự xác nhận.",
+      "region": "cuối biểu mẫu Create a new table",
+      "role": "nút"
+    },
+    {
+      "label": "SQL Editor",
+      "function": "Nơi viết câu lệnh SQL cho database của project. Bài này chỉ mở trang, không chạy câu lệnh."
+    },
+    {
+      "label": "Database",
+      "function": "Nơi quản lý cấu trúc Postgres của project, gồm schema, bảng, cột, vai trò và các đối tượng liên quan."
+    },
+    {
+      "label": "Authentication",
+      "function": "Nơi quản lý người dùng và cách đăng nhập, gồm email, nhà cung cấp bên ngoài và quyền truy cập. Bài này chỉ xem danh sách, không đổi user hoặc policy."
+    },
+    {
+      "label": "Storage",
+      "function": "Nơi lưu file trong các bucket, xem file đã tải lên và đặt quyền ai được đọc hoặc ghi."
+    },
+    {
+      "label": "Edge Functions",
+      "function": "Nơi viết hàm chạy trên máy chủ Supabase, gần người dùng, để xử lý logic không đặt trong database."
+    },
+    {
+      "label": "Realtime",
+      "function": "Nơi bật cập nhật tức thì, để ứng dụng nhận thay đổi của bảng và tin nhắn ngay khi chúng xảy ra."
+    },
+    {
+      "label": "Advisors",
+      "function": "Nơi xem các cảnh báo bảo mật và hiệu năng mà Supabase phát hiện, cùng gợi ý nên sửa chỗ nào."
+    },
+    {
+      "label": "Observability",
+      "function": "Nơi theo dõi sức khỏe của project, gồm truy vấn chậm, lỗi và mức dùng tài nguyên."
+    },
+    {
+      "label": "Logs",
+      "function": "Nơi đọc nhật ký của API, database, auth, storage và các dịch vụ khác. Bài này chỉ đọc log, không đổi cấu hình."
+    },
+    {
+      "label": "Integrations",
+      "function": "Nơi kết nối project với công cụ bên ngoài, như theo dõi lỗi, phân tích hoặc nền tảng triển khai."
+    },
+    {
+      "label": "Project Settings",
+      "function": "Nơi cấu hình project, gồm API, database, thành viên và gói sử dụng. Không đổi thiết lập trong bài học.",
+      "region": "cuối thanh điều hướng project",
+      "role": "liên kết"
+    }
+  ],
+  "steps": [
+    {
+      "number": 1,
+      "target_label": "Table Editor",
+      "completion": {
+        "kind": "url_path",
+        "value": "/dashboard/project/jpyjehpeqptponceofzt/editor"
+      },
+      "sensitivity": "normal"
+    },
+    {
+      "number": 2,
+      "target_label": "Create a table",
+      "completion": {
+        "kind": "selector_visible",
+        "selector": "[data-testid='table-name-input']"
+      },
+      "sensitivity": "normal"
+    },
+    {
+      "number": 3,
+      "target_label": "Name",
+      "completion": {
+        "kind": "input_value",
+        "value": "coach_demo_tasks",
+        "selector": "[data-testid='table-name-input']"
+      },
+      "sensitivity": "normal"
+    },
+    {
+      "number": 4,
+      "target_label": "Save",
+      "completion": {
+        "kind": "url_path_prefix_and_text",
+        "path": "/dashboard/project/jpyjehpeqptponceofzt/editor/",
+        "value": "coach_demo_tasks",
+        "selector": "a, button, [role='treeitem'], [role='tab']"
+      },
+      "sensitivity": "destructive"
+    }
+  ]
+}

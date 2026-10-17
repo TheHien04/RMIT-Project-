@@ -1,3 +1,5 @@
+# Implementation status and related work
+
 ## Real-web boundary (CDP)
 
 The coach can now attach to a single user-selected Chrome tab over loopback
@@ -13,7 +15,7 @@ arrows to reading mode. Browser attach, denied origin, and explicit assists are
 recorded locally in `logs/browser-audit.jsonl`; raw DOM, cookie, token,
 password, and screenshot content are excluded from that log and from the LLM.
 
-# Đã làm và related work
+## Đã làm và related work
 
 Coach là người ngồi cạnh nhân viên thử việc, nói tiếng Việt, chỉ đường tới control trên cổng nội bộ không có lớp accessibility. Người học tự bấm. Coach không bấm hộ trừ khi được nhờ.
 

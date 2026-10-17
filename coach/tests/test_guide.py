@@ -24,7 +24,7 @@ def test_guided_session_speaks_the_first_step_without_leaving(page, sandbox_url)
         lines=lines(),
     )
     text = " ".join(item.text for item in spoken)
-    assert "Mũi tên để đi. Enter để bấm. Escape để đọc trang." in text
+    assert "Mũi tên đổi nút hoặc liên kết. Enter để bấm. Escape để trở lại trang." in text
     assert "Tạo bảng. Enter." in text
     assert all(not event.left_machine for event in log.events)
 

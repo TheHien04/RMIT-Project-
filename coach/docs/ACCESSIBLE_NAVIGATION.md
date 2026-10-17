@@ -1,4 +1,4 @@
-# User flow: Native Focus trên web có accessibility layer
+# Điều hướng bàn phím trên web có accessibility layer
 
 Tài liệu này mô tả flow hiện đang có khi coach gắn vào một web thật như
 Supabase, nơi button/link/field có accessibility name và nhận focus bằng bàn
