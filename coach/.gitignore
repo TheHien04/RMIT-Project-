@@ -1,0 +1,20 @@
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+logs/
+state/
+*.pyc
+.venv/
+.venv312/
+.tools/
+.env
+.cache/
+*.egg-info/
+build/
+dist/
+Coach Companion.app/
+.DS_Store

@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="vi">
+  <head><meta charset="utf-8"><title>Trang div-only thử nghiệm</title></head>
+  <body>
+    <h1>Trang div-only thử nghiệm</h1>
+    <div id="open-board">Mở bảng</div>
+    <p id="result"></p>
+    <script>
+      document.querySelector("#open-board").addEventListener("click", () => {
+        document.querySelector("#result").textContent = "Bảng đã mở";
+      });
+    </script>
+  </body>
+</html>
