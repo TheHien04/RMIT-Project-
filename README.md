@@ -15,26 +15,39 @@ Coach Companion teaches a learner how to complete a real task in Supabase using 
 
 *The loopback-only control panel. The learner remains responsible for every meaningful action.*
 
-## 🧭 Table of contents
+## Table of contents
 
-- [Why it exists](#-why-it-exists)
-- [Product principles](#-product-principles)
-- [How the experience works](#-how-the-experience-works)
-- [System architecture](#-system-architecture)
-- [Privacy and safety](#-privacy-and-safety)
-- [Quick start](#-quick-start)
-- [Demo flow](#-demo-flow)
-- [Testing](#-testing)
-- [Repository map](#-repository-map)
-- [Documentation and presentation](#-documentation-and-presentation)
+- [Why it exists](#why-it-exists)
+- [Research and prototype](#research-and-prototype)
+- [Product principles](#product-principles)
+- [How the experience works](#how-the-experience-works)
+- [System architecture](#system-architecture)
+- [Privacy and safety](#privacy-and-safety)
+- [Quick start](#quick-start)
+- [Demo flow](#demo-flow)
+- [Testing](#testing)
+- [Repository map](#repository-map)
+- [Documentation and presentation](#documentation-and-presentation)
 
-## 💡 Why it exists
+## Why it exists
 
 Learning an unfamiliar web application is difficult when important controls are poorly labelled, missing from the keyboard order, or presented without meaningful context. A conventional automation agent may finish the task, but it does not necessarily teach the learner how to do it independently next time.
 
 Coach Companion takes a different position: **the learner acts; the coach observes, explains, and verifies**. Accessibility support remains available throughout the learning lifecycle, while instructional speech moves from orientation to guided practice, independent practice, and finally on-demand help.
 
-## 🧩 Product principles
+## Research and prototype
+
+The pitch deck connects the workplace accessibility problem to the first end-to-end prototype. The repository keeps the presentation alongside the implementation so reviewers can trace the product rationale, interaction model, and test plan.
+
+![Problem framing from the pitch deck, including workplace software accessibility and reliance on sighted coworkers.](docs/assets/pitch-problem.png)
+
+*Problem framing used to define the onboarding use case. Sources and full context are included in the pitch deck.*
+
+![Early end-to-end prototype showing a Supabase task beside the voice guidance interface.](docs/assets/pitch-learning-flow.png)
+
+*Early prototype flow connecting a live workplace interface with voice guidance.*
+
+## Product principles
 
 | Principle | Product behaviour |
 | --- | --- |
@@ -54,7 +67,7 @@ Core capabilities include:
 - Optional, consent-gated vision using redacted in-memory screenshots.
 - A macOS launcher and local web control panel—no Terminal is required after setup.
 
-## 🎧 How the experience works
+## How the experience works
 
 ```mermaid
 sequenceDiagram
@@ -85,7 +98,7 @@ sequenceDiagram
 
 The current Supabase lesson guides the learner through `Table Editor` → `Create a table` → table name → `Save`. The lesson completes only after the reviewed table route and label appear.
 
-## 🏗️ System architecture
+## System architecture
 
 ```mermaid
 flowchart LR
@@ -127,7 +140,7 @@ flowchart LR
 
 The runtime is deliberately chained instead of fully autonomous. Transcript, lesson policy, browser permissions, and completion checks are evaluated before speech or assistance is allowed.
 
-## 🔐 Privacy and safety
+## Privacy and safety
 
 | Data or capability | Default boundary | Guardrail |
 | --- | --- | --- |
@@ -141,7 +154,7 @@ The runtime is deliberately chained instead of fully autonomous. Transcript, les
 
 Chrome DevTools Protocol is powerful. Use this MVP only with a dedicated staging profile, never with personal or production tabs. See the [security policy](coach/SECURITY.md) before distribution.
 
-## 🚀 Quick start
+## Quick start
 
 ### Requirements
 
@@ -194,7 +207,7 @@ The app starts a loopback-only control panel at `http://127.0.0.1:8787`. For dev
 .venv312/bin/python -m coach app
 ```
 
-## 🧪 Demo flow
+## Demo flow
 
 1. Select **Open Supabase to learn** in Coach Companion.
 2. Sign in manually to the dedicated staging profile and open the reviewed project.
@@ -206,7 +219,7 @@ The app starts a loopback-only control panel at `http://127.0.0.1:8787`. For dev
 
 Useful Vietnamese commands include `gợi ý` (hint), `xong bước này` (finish this step), `mục tiêu bài học` (lesson objective), `bài tự luyện` (practice task), and `dừng hướng dẫn` (stop guidance).
 
-## ✅ Testing
+## Testing
 
 Run the deterministic core suite:
 
@@ -225,7 +238,7 @@ env -u PLAYWRIGHT_BROWSERS_PATH .venv312/bin/python -m pytest -m system -q
 
 Hardware/model probes are intentionally separate because they require downloaded models, GPU/audio support, or a live network service. The complete strategy and manual acceptance checklist are in [Testing](coach/docs/TESTING.md).
 
-## 🗂️ Repository map
+## Repository map
 
 ```text
 .
@@ -249,7 +262,7 @@ Hardware/model probes are intentionally separate because they require downloaded
 
 Generated app bundles, virtual environments, model caches, logs, progress state, local reference repositories, and `.env` files are excluded from Git.
 
-## 📚 Documentation and presentation
+## Documentation and presentation
 
 - [Runtime and operator guide](coach/README.md)
 - [Documentation index](coach/docs/README.md)
@@ -260,7 +273,7 @@ Generated app bundles, virtual environments, model caches, logs, progress state,
 - [Security policy](coach/SECURITY.md)
 - [Coach Companion pitch deck](docs/presentation/Coach-Companion-Pitch-Deck.pptx)
 
-## ⚠️ Project status
+## Project status
 
 Coach Companion is a research MVP for Vietnamese-language onboarding on Supabase staging. It is not a replacement for a screen reader, formal accessibility remediation, or human accessibility testing. Before wider distribution, complete blind-user acceptance testing, replace the ad-hoc macOS signature with a Developer ID signature, notarize the app, and resolve the documented dependency exception.
 
